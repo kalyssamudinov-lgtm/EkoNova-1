@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>EkoNova | Агросистема</title>
+
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Leaflet Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: { 900: '#0b0f19', 800: '#111827', 700: '#1f2937' },
+                        brand: { lime: '#d4f75f', cyan: '#0ea5e9', purple: '#8b5cf6', red: '#ef4444' }
+                    },
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out forwards',
+                        'slide-up': 'slideUp 0.3s ease-out forwards',
+                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'scan': 'scan 2s linear infinite',
+                    },
+                    keyframes: {
+                        fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
+                        slideUp: { from: { transform: 'translateY(20px)', opacity: '0' }, to: { transform: 'translateY(0)', opacity: '1' } },
+                        scan: { '0%': { top: '0%' }, '50%': { top: '100%' }, '100%': { top: '0%' } }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- FontAwesome & Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; overscroll-behavior-y: contain; -webkit-tap-highlight-color: transparent; }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        .dark .glass {
+            background: rgba(17, 24, 39, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        /* Scrollbars */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Custom Scrollbar for Desktop */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .dark ::-webkit-scrollbar-thumb { background: #374151; }
+
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        .pt-safe { padding-top: env(safe-area-inset-top); }
+
+        .hero-gradient { background: radial-gradient(circle at 50% 50%, rgba(212, 247, 95, 0.1) 0%, rgba(255, 255, 255, 0) 50%); }
+        .dark .hero-gradient { background: radial-gradient(circle at 50% 50%, rgba(212, 247, 95, 0.15) 0%, rgba(11, 15, 25, 0) 50%); }
+
+        /* Chat Bubbles */
+        .chat-bubble { max-width: 80%; padding: 12px 16px; border-radius: 20px; font-size: 0.95rem; line-height: 1.4; position: relative; }
+        .chat-user { background: #0ea5e9; color: white; border-bottom-right-radius: 4px; margin-left: auto; }
+        .chat-ai { background: #f1f5f9; color: #0f172a; border-bottom-left-radius: 4px; margin-right: auto; }
+        .dark .chat-ai { background: #1e293b; color: #e2e8f0; }
+
+        /* Scanning effect line */
+        .scan-line {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: #d4f75f;
+            box-shadow: 0 0 10px #d4f75f;
+            animation: scan 2s linear infinite;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 dark:bg-dark-900 transition-colors duration-300 text-slate-900 dark:text-white">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- MOCK DATA & HELPERS ---
+        const MOCK_MESSAGES = [
+            { id: 1, role: 'ai', text: 'Привет! Я агро-помощник EkoNova. Чем могу помочь сегодня? 🌱' }
+        ];
+
+        const AI_RESPONSES = {
+            default: "Я пока учусь, но могу подсказать по погоде, удобрениям, болезням растений или технике. Спросите меня о чем-нибудь конкретном!",
+            weather: "Сейчас ясно, +24°C. Ветер 3 м/с. Дождя не ожидается в ближайшие 3 дня. Отличное время для полевых работ.",
+            calc: "Для расчета удобрений откройте 'Калькулятор' в разделе Инструменты. Я помогу рассчитать нормы азота.",
+            hello: "Здравствуйте! Я ваш цифровой агроном. Готов помочь с задачами.",
+            price: "Цены на рынке сегодня: Пшеница ~18 сом/кг, Ячмень ~15 сом/кг, Кукуруза ~19 сом/кг.",
+            doctor: "Если растение болеет, используйте инструмент 'ИИ Доктор'. Загрузите фото листа, и я определю болезнь и лечение.",
+            rent: "В парке техники сейчас свободны: 2 трактора John Deere и 1 сеялка. Забронировать можно в разделе 'Техника'.",
+            rotation: "Планируете следующий сезон? Инструмент 'Севооборот' подскажет, что лучше сеять после текущей культуры.",
+            finance: "Ваш текущий баланс: 280,000 сом. Последняя крупная операция: продажа пшеницы (+450,000 сом)."
+        };
+
+        const generateReply = (text) => {
+            const lower = text.toLowerCase();
+
+            // --- УМНЫЙ СЕВООБОРОТ (SMART CROP ROTATION) ---
+            if (lower.includes('севооборот') || lower.includes('сажать') || lower.includes('почв') || lower.includes('сеять') || lower.includes('после')) {
+                if (lower.includes('пшениц') || lower.includes('буудай')) {
+                    return "🌾 После Пшеницы (Буудай) лучше всего сажать Бобовые (Соя, Фасоль). Они восстановят азот в почве, который забрала пшеница.";
+                }
+                if (lower.includes('кукуруз') || lower.includes('жүгөрү')) {
+                    return "🌽 После Кукурузы (Жүгөрү) рекомендую сажать Ячмень или Озимую пшеницу. Это снизит риск заболеваний корней (фузариоза).";
+                }
+                if (lower.includes('ячмен') || lower.includes('арпа')) {
+                    return "🌻 После Ячменя (Арпа) отлично подойдет Подсолнечник или Корнеплоды (Свекла). Корневая система ячменя хорошо рыхлит верхний слой.";
+                }
+                if (lower.includes('соя') || lower.includes('сои') || lower.includes('буурчак')) {
+                    return "🌽 После Сои (Буурчак) идеально сажать Кукурузу. Почва после бобовых богата азотом, что даст отличный урожай кукурузы!";
+                }
+                if (lower.includes('свекл') || lower.includes('кызылча')) {
+                    return "🌾 После Свеклы (Кызылча) лучше сеять Ячмень или Пшеницу, чтобы восстановить структуру почвы.";
+                }
+                // Если культура не распознана, но вопрос про севооборот
+                return AI_RESPONSES.rotation;
+            }
+            // ------------------------------------------------
+
+            if (lower.includes('погод') || lower.includes('дождь') || lower.includes('температур') || lower.includes('прогноз')) return AI_RESPONSES.weather;
+            if (lower.includes('расчет') || lower.includes('удобрен') || lower.includes('азот') || lower.includes('селитр')) return AI_RESPONSES.calc;
+            if (lower.includes('привет') || lower.includes('здравств') || lower.includes('салам') || lower.includes('hello')) return AI_RESPONSES.hello;
+            if (lower.includes('цен') || lower.includes('стоит') || lower.includes('рынок') || lower.includes('продать')) return AI_RESPONSES.price;
+            if (lower.includes('болеет') || lower.includes('лист') || lower.includes('пятн') || lower.includes('жук') || lower.includes('доктор')) return AI_RESPONSES.doctor;
+            if (lower.includes('трактор') || lower.includes('комбайн') || lower.includes('машин') || lower.includes('аренд')) return AI_RESPONSES.rent;
+            if (lower.includes('деньги') || lower.includes('баланс') || lower.includes('доход') || lower.includes('расход') || lower.includes('финанс')) return AI_RESPONSES.finance;
+            
+            return AI_RESPONSES.default;
+        };
+
+        // --- TRANSLATIONS ---
+        const TRANSLATIONS = {
+            ru: {
+                tabs: { dash: "Главная", map: "Карта", ai: "ИИ", tools: "Инструменты" },
+                mobileDash: { welcome: "Привет, Фермер!", status: "Системы в норме", tasks: "Задачи" },
+                nav: { solutions: "Решения", about: "О нас", pricing: "Тарифы", login: "Войти" },
+                hero: { title: "Управляйте агробизнесом", subtitle: "силой интеллекта", desc: "Единая экосистема: от спутника до склада.", start: "Начать бесплатно" },
+                common: { weather: "Погода", livestock: "Скот", soil: "Влажность", calc: "Калькулятор", map: "Карта полей", logout: "Выйти", back: "Назад", save: "Сохранить", send: "Отправить" },
+                tools: { title: "ИНСТРУМЕНТЫ", agro: "КОМАНДА", rent: "ТЕХНИКА", calc: "УДОБРЕНИЯ", feed: "КОРМА", inv: "СКЛАД", weather: "ПОГОДА", doctor: "ИИ ДОКТОР", rotation: "СЕВООБОРОТ", finance: "ФИНАНСЫ" },
+                toolViews: {
+                    calc: { title: "Калькулятор Удобрений", area: "Площадь (га)", crop: "Культура", result: "Нужно азота (кг):", calcBtn: "Рассчитать" },
+                    feed: { title: "Калькулятор Кормов", animal: "Вид животного", count: "Количество (голов)", days: "На сколько дней", result: "Нужно корма (кг):", calcBtn: "Рассчитать" },
+                    weather: { title: "Прогноз Погоды", today: "Сегодня", wind: "Ветер", hum: "Влажность" },
+                    rent: { title: "Аренда Техники", book: "Забронировать" },
+                    agro: { title: "Моя Команда", call: "Позвонить", role: "Должность", add: "Добавить сотрудника" },
+                    inv: { title: "Склад", item: "Товар", qty: "Кол-во" },
+                    rotation: { title: "Умный Севооборот", current: "Текущая культура", soil: "Тип почвы", analyze: "Подобрать культуру", suggestion: "Рекомендуем:", reason: "Причина:" },
+                    doctor: { title: "Агро-Доктор", upload: "Сделать фото", desc: "Опишите симптомы (опционально)", diagnose: "Начать диагностику", result: "Результат анализа:", treatment: "Лечение:" },
+                    finance: { title: "Финансы", income: "Доходы", expense: "Расходы", balance: "Баланс", history: "История операций", add: "Добавить запись" }
+                }
+            },
+            ky: {
+                tabs: { dash: "Башкы", map: "Карта", ai: "ИИ", tools: "Куралдар" },
+                mobileDash: { welcome: "Салам, Фермер!", status: "Баары жайында", tasks: "Тапшырмалар" },
+                nav: { solutions: "Чечимдер", about: "Биз жөнүндө", pricing: "Тарифтер", login: "Кирүү" },
+                hero: { title: "Агробизнести башкарыңыз", subtitle: "интеллекттин күчү менен", desc: "Бирдиктүү экосистема: спутниктен кампага чейин.", start: "Акысыз баштоо" },
+                common: { weather: "Аба ырайы", livestock: "Мал саны", soil: "Нымдуулук", calc: "Калькулятор", map: "Талаа картасы", logout: "Чыгуу", back: "Артка", save: "Сактоо", send: "Жөнөтүү" },
+                tools: { title: "КУРАЛДАР", agro: "КОМАНДА", rent: "ТЕХНИКА", calc: "ЖЕР СЕМИРТКИЧ", feed: "ТОЮТ", inv: "КАМПА", weather: "АБА ЫРАЙЫ", doctor: "ИИ ДОКТОР", rotation: "КОТОРУП АЙДОО", finance: "КАРЖЫ" },
+                toolViews: {
+                    calc: { title: "Жер семирткич", area: "Аянт (га)", crop: "Өсүмдүк", result: "Азот керек (кг):", calcBtn: "Эсептөө" },
+                    feed: { title: "Тоют эсептөө", animal: "Малдын түрү", count: "Малдын саны (баш)", days: "Канча күнгө", result: "Керектүү тоют (кг):", calcBtn: "Эсептөө" },
+                    weather: { title: "Аба Ырайы", today: "Бүгүн", wind: "Шамал", hum: "Нымдуулук" },
+                    rent: { title: "Техника Ижарасы", book: "Брондоо" },
+                    agro: { title: "Менин Командам", call: "Чалуу", role: "Кызмат", add: "Кызматкер кошуу" },
+                    inv: { title: "Кампа", item: "Товар", qty: "Саны" },
+                    rotation: { title: "Акылдуу которуп айдоо", current: "Азыркы өсүмдүк", soil: "Топурак", analyze: "Талдоо", suggestion: "Сунуш:", reason: "Себеби:" },
+                    doctor: { title: "Агро-Доктор", upload: "Сүрөт жүктөө", desc: "Көйгөйдү сүрөттөңүз", diagnose: "Аныктоо", result: "Анализдин жыйынтыгы:", treatment: "Дарылоо:" },
+                    finance: { title: "Каржы", income: "Киреше", expense: "Чыгым", balance: "Баланс", history: "Операциялар тарыхы", add: "Жазуу кошуу" }
+                }
+            }
+        };
+
+        // --- SHARED COMPONENTS ---
+        const Toast = ({ message, type = 'success', onClose }) => {
+            useEffect(() => { const t = setTimeout(onClose, 3000); return () => clearTimeout(t); }, [onClose]);
+            const colors = { success: 'bg-brand-lime text-black', error: 'bg-brand-red text-white', info: 'bg-brand-cyan text-white' };
+            return (
+                <div className={`fixed top-4 left-1/2 -translate-x-1/2 ${colors[type]} px-6 py-3 rounded-full shadow-xl font-bold z-[100] animate-fade-in flex items-center gap-2`}>
+                    <i className={`fa-solid ${type === 'success' ? 'fa-check' : 'fa-info-circle'}`}></i> {message}
+                </div>
+            );
+        };
+
+        // --- UNIVERSAL FIELD MAP COMPONENT (Desktop & Mobile) ---
+        const FieldMap = ({ mapId }) => {
+            useEffect(() => {
+                // Check if map container exists
+                if (!document.getElementById(mapId)) return;
+
+                // Центр Чуйской долины (район Токмока/Канта)
+                const map = L.map(mapId).setView([42.84, 75.30], 14); 
+                
+                // Используем Esri World Topo Map для рельефа
+                L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+                    attribution: 'Tiles &copy; Esri',
+                    maxZoom: 18
+                }).addTo(map);
+
+                // Генерация сетки участков по ~1 га
+                const startLat = 42.830;
+                const startLng = 75.280;
+                const rows = 6;
+                const cols = 8;
+                const latStep = 0.0009; // ~100m
+                const lngStep = 0.0012; // ~100m
+
+                let idCounter = 1;
+
+                for (let i = 0; i < rows; i++) {
+                    for (let j = 0; j < cols; j++) {
+                        const pLat = startLat + i * latStep;
+                        const pLng = startLng + j * lngStep;
+
+                        let soilType, color, crop;
+                        const noise = Math.random() * 0.5; 
+                        
+                        if (j + noise < 2.5) {
+                            soilType = "Чернозем";
+                            color = "#3e2723"; 
+                            crop = "Пшеница";
+                        } else if (j + noise < 5.5) {
+                            soilType = "Глинистая";
+                            color = "#d84315"; 
+                            crop = "Кукуруза";
+                        } else {
+                            soilType = "Песчаная";
+                            color = "#fbc02d"; 
+                            crop = "Ячмень";
+                        }
+
+                        const coords = [
+                            [pLat, pLng],
+                            [pLat + latStep - 0.00005, pLng],
+                            [pLat + latStep - 0.00005, pLng + lngStep - 0.00005],
+                            [pLat, pLng + lngStep - 0.00005]
+                        ];
+
+                        const polygon = L.polygon(coords, {
+                            color: color,
+                            fillColor: color,
+                            fillOpacity: 0.5, 
+                            weight: 1
+                        }).addTo(map);
+
+                        polygon.bindPopup(`
+                            <div style="font-family: Inter, sans-serif;">
+                                <h3 style="font-weight: 800; margin-bottom: 4px; font-size: 14px;">Участок #${idCounter++}</h3>
+                                <div style="font-size: 12px; color: #555;">
+                                    <div><b>Площадь:</b> ~1 га</div>
+                                    <div><b>Почва:</b> ${soilType}</div>
+                                    <div><b>Культура:</b> ${crop}</div>
+                                </div>
+                            </div>
+                        `);
+                    }
+                }
+
+                // Force map invalidate size after a small delay to handle layout transitions
+                setTimeout(() => map.invalidateSize(), 300);
+
+                return () => map.remove();
+            }, [mapId]);
+            
+            return (
+                <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-xl border border-slate-200 dark:border-slate-700">
+                    <div id={mapId} className="w-full h-full z-0"></div>
+                    
+                    {/* Legend Overlay */}
+                    <div className="absolute bottom-6 right-6 bg-white/90 dark:bg-slate-800/90 backdrop-blur p-4 rounded-xl shadow-lg z-[1000] text-xs w-48 border border-slate-100 dark:border-slate-700 pointer-events-none sm:pointer-events-auto">
+                        <h4 className="font-bold mb-3 uppercase tracking-wider opacity-70 border-b pb-1">Карта почв</h4>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="w-4 h-4 rounded bg-[#3e2723] shadow-sm"></div>
+                            <span className="font-medium">Чернозем</span>
+                        </div>
+                        <div className="flex items-center gap-3 mb-2">
+                            <div className="w-4 h-4 rounded bg-[#d84315] shadow-sm"></div>
+                            <span className="font-medium">Глинистая</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-4 h-4 rounded bg-[#fbc02d] shadow-sm"></div>
+                            <span className="font-medium">Песчаная</span>
+                        </div>
+                        <div className="mt-3 text-[10px] opacity-60 text-center">
+                            1 клетка ≈ 1 гектар
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- TOOL COMPONENTS ---
+
+        const FinanceTool = ({ t, goBack }) => {
+            const transactions = [
+                { id: 1, title: 'Продажа пшеницы', amount: 450000, type: 'in', date: '2023-10-12' },
+                { id: 2, title: 'Закупка семян', amount: -120000, type: 'out', date: '2023-10-15' },
+                { id: 3, title: 'Аренда комбайна', amount: -50000, type: 'out', date: '2023-10-18' },
+            ];
+
+            return (
+                <div className="h-full flex flex-col animate-slide-up">
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={goBack} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                        <h2 className="text-2xl font-bold">{t.title}</h2>
+                    </div>
+
+                    {/* Balance Cards */}
+                    <div className="grid grid-cols-2 gap-3 mb-6">
+                         <div className="p-4 bg-green-500 text-white rounded-2xl shadow-lg">
+                            <div className="text-xs opacity-80 uppercase font-bold">{t.income}</div>
+                            <div className="text-2xl font-black mt-1">+450k</div>
+                         </div>
+                         <div className="p-4 bg-red-500 text-white rounded-2xl shadow-lg">
+                            <div className="text-xs opacity-80 uppercase font-bold">{t.expense}</div>
+                            <div className="text-2xl font-black mt-1">-170k</div>
+                         </div>
+                    </div>
+                    <div className="p-6 bg-slate-800 text-white rounded-3xl shadow-xl mb-6 flex justify-between items-center">
+                        <div>
+                            <div className="text-sm opacity-60 uppercase font-bold">{t.balance}</div>
+                            <div className="text-3xl font-black text-brand-lime">280,000 ⃀</div>
+                        </div>
+                        <div className="w-10 h-10 rounded-full bg-brand-lime text-black flex items-center justify-center"><i className="fa-solid fa-wallet"></i></div>
+                    </div>
+
+                    {/* Transaction List */}
+                    <div className="flex-1 overflow-auto space-y-3 pb-20">
+                        <h3 className="font-bold opacity-50 px-2 uppercase text-xs tracking-wider">{t.history}</h3>
+                        {transactions.map(tr => (
+                            <div key={tr.id} className="glass p-4 rounded-2xl flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${tr.type==='in'?'bg-green-500':'bg-red-500'}`}>
+                                        <i className={`fa-solid ${tr.type==='in'?'fa-arrow-down':'fa-arrow-up'} rotate-45`}></i>
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-sm">{tr.title}</div>
+                                        <div className="text-xs opacity-50">{tr.date}</div>
+                                    </div>
+                                </div>
+                                <div className={`font-black ${tr.type==='in'?'text-green-600 dark:text-green-400':'text-red-500'}`}>
+                                    {tr.type==='in'?'+':''}{tr.amount.toLocaleString()}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    
+                    <button className="fixed bottom-6 right-6 w-14 h-14 bg-brand-cyan text-white rounded-full shadow-xl flex items-center justify-center text-2xl active:scale-90 transition-transform">
+                        <i className="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+            );
+        };
+
+        const AgroTeamTool = ({ t, goBack }) => {
+            // Updated phone number as requested: +996508133217
+            const team = [
+                { id: 1, name: 'Azamat Agros', role: 'Chief Agronomist', img: 'https://randomuser.me/api/portraits/men/32.jpg', phone: '+996508133217' },
+                { id: 2, name: 'Aigul Vet', role: 'Veterinarian', img: 'https://randomuser.me/api/portraits/women/44.jpg', phone: '+996508133217' },
+                { id: 3, name: 'Bakyt Driver', role: 'Lead Driver', img: 'https://randomuser.me/api/portraits/men/85.jpg', phone: '+996508133217' },
+            ];
+
+            return (
+                <div className="h-full flex flex-col animate-slide-up">
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={goBack} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                        <h2 className="text-2xl font-bold">{t.title}</h2>
+                    </div>
+
+                    <div className="space-y-4 overflow-auto pb-20">
+                        {team.map(member => (
+                            <div key={member.id} className="glass p-4 rounded-3xl flex items-center gap-4">
+                                <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-200">
+                                    <img src={member.img} className="w-full h-full object-cover" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="font-bold text-lg leading-tight">{member.name}</h3>
+                                    <p className="text-xs opacity-60 uppercase font-bold text-brand-cyan">{member.role}</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <a href={`tel:${member.phone}`} className="w-10 h-10 rounded-full bg-green-100 dark:bg-green-900 text-green-600 flex items-center justify-center active:scale-90 transition-transform"><i className="fa-solid fa-phone"></i></a>
+                                    <a href={`https://wa.me/${member.phone.replace('+', '')}`} target="_blank" className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 text-blue-600 flex items-center justify-center active:scale-90 transition-transform"><i className="fa-solid fa-comment"></i></a>
+                                </div>
+                            </div>
+                        ))}
+                         <button className="w-full py-4 rounded-2xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-400 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+                            <i className="fa-solid fa-user-plus mr-2"></i> {t.add}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        const CropRotationTool = ({ t, goBack }) => {
+            const [crop, setCrop] = useState('wheat');
+            const [soil, setSoil] = useState('chernozem');
+            const [suggestion, setSuggestion] = useState(null);
+            const [loading, setLoading] = useState(false);
+
+            const handleAnalyze = () => {
+                setLoading(true);
+                setSuggestion(null);
+                setTimeout(() => {
+                    setLoading(false);
+                    const logic = {
+                        wheat: { rec: 'Soybeans / Beans (Бобовые)', reason: 'Восстановление азота в почве после зерновых.' },
+                        corn: { rec: 'Barley (Ячмень)', reason: 'Снижение риска корневых гнилей и вредителей.' },
+                        barley: { rec: 'Sunflowers (Подсолнечник)', reason: 'Использование запасов влаги из глубоких слоев.' },
+                        soy: { rec: 'Corn (Кукуруза)', reason: 'Высокая потребность в азоте, который накопила соя.' }
+                    };
+                    const fallback = { rec: 'Clover (Клевер)', reason: 'Универсальное средство для отдыха почвы.' };
+                    const cropKey = crop.toLowerCase().includes('wheat') ? 'wheat' : 
+                                    crop.toLowerCase().includes('corn') ? 'corn' : 
+                                    crop.toLowerCase().includes('barley') ? 'barley' : 'soy';
+                    setSuggestion(logic[cropKey] || fallback);
+                }, 1200);
+            };
+
+            return (
+                <div className="h-full flex flex-col animate-slide-up">
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={goBack} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                        <h2 className="text-2xl font-bold">{t.title}</h2>
+                    </div>
+                    <div className="glass p-6 rounded-3xl space-y-6">
+                         <div>
+                            <label className="block text-sm font-bold opacity-70 mb-2">{t.current}</label>
+                            <select value={crop} onChange={e => setCrop(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-xl font-bold outline-none">
+                                <option value="wheat">Wheat (Пшеница)</option>
+                                <option value="corn">Corn (Кукуруза)</option>
+                                <option value="barley">Barley (Ячмень)</option>
+                                <option value="soy">Soybeans (Соя)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold opacity-70 mb-2">{t.soil}</label>
+                            <select value={soil} onChange={e => setSoil(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-xl font-bold outline-none">
+                                <option value="chernozem">Chernozem (Чернозем)</option>
+                                <option value="clay">Clay (Глинистая)</option>
+                                <option value="sandy">Sandy (Песчаная)</option>
+                            </select>
+                        </div>
+                        <button onClick={handleAnalyze} className="w-full bg-green-600 text-white py-4 rounded-xl font-bold text-lg active:scale-95 transition-transform shadow-lg shadow-green-500/30 flex items-center justify-center gap-2">
+                             {loading ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-wand-magic-sparkles"></i>} {t.analyze}
+                        </button>
+                        {suggestion && (
+                            <div className="bg-white dark:bg-slate-800 border-l-4 border-brand-lime p-5 rounded-r-xl shadow-md animate-fade-in">
+                                <div className="text-xs opacity-60 uppercase font-bold tracking-wider mb-1">{t.suggestion}</div>
+                                <div className="text-xl font-black text-brand-lime-dark mb-3">{suggestion.rec}</div>
+                                <div className="text-xs opacity-60 uppercase font-bold tracking-wider mb-1">{t.reason}</div>
+                                <p className="text-sm opacity-90 leading-relaxed">{suggestion.reason}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )
+        }
+
+        const AIDoctorTool = ({ t, goBack }) => {
+            const [isScanning, setIsScanning] = useState(false);
+            const [result, setResult] = useState(null);
+            const [image, setImage] = useState(null);
+
+            const handleFileChange = (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onloadend = () => setImage(reader.result);
+                    reader.readAsDataURL(file);
+                    setResult(null);
+                }
+            };
+
+            const handleDiagnose = () => {
+                if(!image) return;
+                setIsScanning(true);
+                setTimeout(() => {
+                    setIsScanning(false);
+                    setResult({
+                        diagnosis: "Septoria Leaf Blotch (Септориоз)",
+                        confidence: "94%",
+                        treatment: "Применить фунгициды на основе азоксистробина. Уменьшить влажность."
+                    });
+                }, 2500);
+            };
+
+            return (
+                <div className="h-full flex flex-col animate-slide-up">
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={goBack} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                        <h2 className="text-2xl font-bold">{t.title}</h2>
+                    </div>
+                    <div className="glass p-6 rounded-3xl space-y-6 flex-1 overflow-auto">
+                        <div className="relative w-full h-64 bg-slate-100 dark:bg-slate-800 rounded-2xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-600 flex flex-col items-center justify-center group">
+                            {image ? (
+                                <>
+                                    <img src={image} className="w-full h-full object-cover" />
+                                    {isScanning && <div className="scan-line"></div>}
+                                </>
+                            ) : (
+                                <>
+                                    <i className="fa-solid fa-camera text-4xl text-slate-400 mb-2 group-hover:scale-110 transition-transform"></i>
+                                    <span className="text-sm text-slate-400 font-bold">{t.upload}</span>
+                                </>
+                            )}
+                            <input type="file" accept="image/*" onChange={handleFileChange} className="absolute inset-0 opacity-0 cursor-pointer" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold opacity-70 mb-2">{t.desc}</label>
+                            <textarea className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-xl font-medium outline-none h-24 resize-none" placeholder="..."></textarea>
+                        </div>
+                        <button onClick={handleDiagnose} disabled={!image || isScanning} className={`w-full py-4 rounded-xl font-bold text-lg active:scale-95 transition-transform shadow-lg flex items-center justify-center gap-2 ${!image ? 'bg-slate-300 text-slate-500 cursor-not-allowed' : 'bg-brand-red text-white shadow-brand-red/30'}`}>
+                            {isScanning ? "Анализ..." : <><i className="fa-solid fa-microscope"></i> {t.diagnose}</>}
+                        </button>
+                        {result && (
+                            <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-5 rounded-2xl animate-fade-in">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <i className="fa-solid fa-check-circle text-green-500 text-xl"></i>
+                                    <h3 className="font-black text-lg">{t.result}</h3>
+                                    <span className="ml-auto bg-green-200 dark:bg-green-800 text-green-800 dark:text-green-200 text-xs px-2 py-1 rounded-full font-bold">{result.confidence}</span>
+                                </div>
+                                <div className="text-xl font-bold mb-2">{result.diagnosis}</div>
+                                <div className="h-px bg-green-200 dark:bg-green-800 my-3"></div>
+                                <div className="text-xs opacity-60 uppercase font-bold tracking-wider mb-1">{t.treatment}</div>
+                                <p className="text-sm opacity-90 leading-relaxed">{result.treatment}</p>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )
+        }
+
+        const FeedCalculatorTool = ({ t, goBack }) => {
+            const [animal, setAnimal] = useState('cow');
+            const [count, setCount] = useState('');
+            const [days, setDays] = useState('');
+            const [result, setResult] = useState(null);
+
+            const handleCalc = () => {
+                if(!count || !days) return;
+                // Rates: kg per day per head
+                const rates = { cow: 15, sheep: 3, horse: 12 }; 
+                const total = parseInt(count) * parseInt(days) * rates[animal];
+                setResult(total);
+            }
+
+            return (
+                <div className="h-full flex flex-col animate-slide-up">
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={goBack} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                        <h2 className="text-2xl font-bold">{t.title}</h2>
+                    </div>
+                    <div className="glass p-6 rounded-3xl space-y-6">
+                        <div>
+                            <label className="block text-sm font-bold opacity-70 mb-2">{t.animal}</label>
+                            <select value={animal} onChange={e => setAnimal(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-xl font-bold outline-none">
+                                <option value="cow">Корова / Уй</option>
+                                <option value="sheep">Овца / Кой</option>
+                                <option value="horse">Лошадь / Жылкы</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold opacity-70 mb-2">{t.count}</label>
+                            <input type="number" value={count} onChange={e => setCount(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-xl font-bold text-lg outline-none focus:ring-2 ring-brand-cyan" placeholder="0" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold opacity-70 mb-2">{t.days}</label>
+                            <input type="number" value={days} onChange={e => setDays(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-xl font-bold text-lg outline-none focus:ring-2 ring-brand-cyan" placeholder="0" />
+                        </div>
+                        <button onClick={handleCalc} className="w-full bg-amber-600 text-white py-4 rounded-xl font-bold text-lg active:scale-95 transition-transform">{t.calcBtn}</button>
+                        {result !== null && (
+                            <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-500 p-4 rounded-xl text-center animate-fade-in">
+                                <div className="text-sm opacity-70 uppercase font-bold">{t.result}</div>
+                                <div className="text-4xl font-black text-amber-600 dark:text-amber-400">{result.toLocaleString()}</div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )
+        };
+
+        const CalculatorTool = ({ t, goBack }) => {
+            const [area, setArea] = useState('');
+            const [result, setResult] = useState(null);
+
+            const handleCalc = () => {
+                if(!area) return;
+                setResult(area * 150); 
+            }
+
+            return (
+                <div className="h-full flex flex-col animate-slide-up">
+                    <div className="flex items-center gap-4 mb-6">
+                        <button onClick={goBack} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                        <h2 className="text-2xl font-bold">{t.title}</h2>
+                    </div>
+                    <div className="glass p-6 rounded-3xl space-y-6">
+                        <div>
+                            <label className="block text-sm font-bold opacity-70 mb-2">{t.area}</label>
+                            <input type="number" value={area} onChange={e => setArea(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-xl font-bold text-lg outline-none focus:ring-2 ring-brand-cyan" placeholder="0" />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-bold opacity-70 mb-2">{t.crop}</label>
+                            <select className="w-full bg-slate-100 dark:bg-slate-800 p-4 rounded-xl font-bold outline-none">
+                                <option>Пшеница (Буудай)</option>
+                                <option>Кукуруза (Жүгөрү)</option>
+                                <option>Ячмень (Арпа)</option>
+                            </select>
+                        </div>
+                        <button onClick={handleCalc} className="w-full bg-brand-purple text-white py-4 rounded-xl font-bold text-lg active:scale-95 transition-transform">{t.calcBtn}</button>
+                        {result !== null && (
+                            <div className="bg-brand-lime/20 border border-brand-lime p-4 rounded-xl text-center animate-fade-in">
+                                <div className="text-sm opacity-70 uppercase font-bold">{t.result}</div>
+                                <div className="text-4xl font-black text-brand-lime-dark">{result}</div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )
+        };
+
+        const WeatherTool = ({ t, goBack }) => (
+            <div className="h-full flex flex-col animate-slide-up">
+                <div className="flex items-center gap-4 mb-6">
+                    <button onClick={goBack} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                    <h2 className="text-2xl font-bold">{t.title}</h2>
+                </div>
+                <div className="bg-gradient-to-br from-blue-400 to-blue-600 text-white p-6 rounded-[30px] shadow-lg mb-4">
+                    <div className="flex justify-between items-start">
+                        <div>
+                            <h3 className="text-lg opacity-90">{t.today}</h3>
+                            <h1 className="text-6xl font-black mt-2">24°</h1>
+                            <p className="mt-1 font-medium opacity-80">Sunny / Ачык</p>
+                        </div>
+                        <i className="fa-solid fa-sun text-6xl text-yellow-300 animate-pulse-fast"></i>
+                    </div>
+                    <div className="mt-8 flex gap-6">
+                        <div>
+                            <div className="text-xs opacity-70 uppercase">{t.wind}</div>
+                            <div className="font-bold text-xl">3 m/s</div>
+                        </div>
+                        <div>
+                            <div className="text-xs opacity-70 uppercase">{t.hum}</div>
+                            <div className="font-bold text-xl">42%</div>
+                        </div>
+                    </div>
+                </div>
+                <div className="glass p-4 rounded-3xl flex-1">
+                    <div className="flex justify-between items-center py-3 border-b border-slate-200 dark:border-slate-700">
+                        <span>Mon</span>
+                        <i className="fa-solid fa-cloud-sun text-slate-400"></i>
+                        <span className="font-bold">22° / 14°</span>
+                    </div>
+                    <div className="flex justify-between items-center py-3 border-b border-slate-200 dark:border-slate-700">
+                        <span>Tue</span>
+                        <i className="fa-solid fa-cloud-rain text-blue-400"></i>
+                        <span className="font-bold">19° / 12°</span>
+                    </div>
+                    <div className="flex justify-between items-center py-3">
+                        <span>Wed</span>
+                        <i className="fa-solid fa-sun text-orange-400"></i>
+                        <span className="font-bold">25° / 16°</span>
+                    </div>
+                </div>
+            </div>
+        );
+
+        const RentTool = ({ t, goBack }) => (
+            <div className="h-full flex flex-col animate-slide-up">
+                <div className="flex items-center gap-4 mb-6">
+                    <button onClick={goBack} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                    <h2 className="text-2xl font-bold">{t.title}</h2>
+                </div>
+                <div className="space-y-4">
+                    {[1, 2, 3].map(i => (
+                        <div key={i} className="glass p-4 rounded-2xl flex gap-4 items-center">
+                            <div className="w-16 h-16 bg-slate-200 dark:bg-slate-700 rounded-xl flex items-center justify-center text-2xl"><i className="fa-solid fa-tractor"></i></div>
+                            <div className="flex-1">
+                                <h3 className="font-bold">John Deere 8R</h3>
+                                <p className="text-xs opacity-60">Status: Available</p>
+                            </div>
+                            <button className="bg-brand-cyan text-white px-3 py-2 rounded-lg text-sm font-bold active:scale-95">{t.book}</button>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        // --- SECTION COMPONENTS ---
+
+        const AIChat = ({ lang }) => {
+            const [messages, setMessages] = useState(MOCK_MESSAGES);
+            const [input, setInput] = useState('');
+            const [isTyping, setIsTyping] = useState(false);
+            const chatEndRef = useRef(null);
+            const t = TRANSLATIONS[lang].common;
+
+            useEffect(() => {
+                chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+            }, [messages, isTyping]);
+
+            const handleSend = () => {
+                if(!input.trim()) return;
+                const userMsg = { id: Date.now(), role: 'user', text: input };
+                setMessages(prev => [...prev, userMsg]);
+                setInput('');
+                setIsTyping(true);
+
+                // Simulate AI response
+                setTimeout(() => {
+                    const replyText = generateReply(userMsg.text);
+                    setMessages(prev => [...prev, { id: Date.now()+1, role: 'ai', text: replyText }]);
+                    setIsTyping(false);
+                }, 1000);
+            };
+
+            return (
+                <div className="h-full flex flex-col pt-20 pb-24 md:pb-4 animate-slide-up relative">
+                     {/* Chat Area */}
+                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                        {messages.map(msg => (
+                            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`chat-bubble ${msg.role === 'user' ? 'chat-user' : 'chat-ai'}`}>
+                                    {msg.text}
+                                </div>
+                            </div>
+                        ))}
+                        {isTyping && (
+                            <div className="flex justify-start">
+                                <div className="chat-bubble chat-ai">
+                                    <div className="flex gap-1">
+                                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"></div>
+                                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
+                                        <div className="w-2 h-2 bg-slate-400 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                        <div ref={chatEndRef} />
+                     </div>
+
+                     {/* Input Area */}
+                     <div className="p-4 bg-white/80 dark:bg-dark-900/80 backdrop-blur-md border-t border-slate-200 dark:border-slate-800">
+                        <div className="flex gap-2">
+                            <input 
+                                value={input}
+                                onChange={e => setInput(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && handleSend()}
+                                placeholder="..." 
+                                className="flex-1 bg-slate-100 dark:bg-slate-800 rounded-2xl px-4 py-3 outline-none focus:ring-2 ring-brand-cyan transition-all"
+                            />
+                            <button onClick={handleSend} className="w-12 h-12 bg-brand-cyan text-white rounded-2xl flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-brand-cyan/30">
+                                <i className="fa-solid fa-paper-plane"></i>
+                            </button>
+                        </div>
+                     </div>
+                </div>
+            );
+        };
+
+        const ToolsSection = ({ lang }) => {
+            const [selectedTool, setSelectedTool] = useState(null);
+            const t = TRANSLATIONS[lang].tools;
+            const tViews = TRANSLATIONS[lang].toolViews;
+
+            const tools = [
+                { id: 'rotation', icon: 'fa-rotate', color: 'bg-green-600', label: t.rotation },
+                { id: 'doctor', icon: 'fa-user-doctor', color: 'bg-red-500', label: t.doctor },
+                { id: 'finance', icon: 'fa-wallet', color: 'bg-indigo-600', label: t.finance },
+                { id: 'agro', icon: 'fa-users', color: 'bg-orange-500', label: t.agro },
+                { id: 'rent', icon: 'fa-tractor', color: 'bg-blue-600', label: t.rent },
+                { id: 'calc', icon: 'fa-calculator', color: 'bg-brand-purple', label: t.calc },
+                { id: 'feed', icon: 'fa-wheat-awn', color: 'bg-amber-600', label: t.feed },
+                { id: 'inv', icon: 'fa-boxes-stacked', color: 'bg-emerald-500', label: t.inv },
+                { id: 'weather', icon: 'fa-cloud-sun', color: 'bg-sky-500', label: t.weather }
+            ];
+
+            const renderTool = () => {
+                switch(selectedTool) {
+                    case 'rotation': return <CropRotationTool t={tViews.rotation} goBack={() => setSelectedTool(null)} />;
+                    case 'doctor': return <AIDoctorTool t={tViews.doctor} goBack={() => setSelectedTool(null)} />;
+                    case 'finance': return <FinanceTool t={tViews.finance} goBack={() => setSelectedTool(null)} />;
+                    case 'calc': return <CalculatorTool t={tViews.calc} goBack={() => setSelectedTool(null)} />;
+                    case 'feed': return <FeedCalculatorTool t={tViews.feed} goBack={() => setSelectedTool(null)} />;
+                    case 'weather': return <WeatherTool t={tViews.weather} goBack={() => setSelectedTool(null)} />;
+                    case 'rent': return <RentTool t={tViews.rent} goBack={() => setSelectedTool(null)} />;
+                    case 'agro': return <AgroTeamTool t={tViews.agro} goBack={() => setSelectedTool(null)} />;
+                    case 'inv': return (
+                        <div className="h-full flex flex-col animate-slide-up">
+                             <div className="flex items-center gap-4 mb-6">
+                                <button onClick={() => setSelectedTool(null)} className="w-10 h-10 rounded-full bg-slate-200 dark:bg-slate-700 flex items-center justify-center"><i className="fa-solid fa-arrow-left"></i></button>
+                                <h2 className="text-2xl font-bold">{tViews.inv.title}</h2>
+                            </div>
+                            <div className="glass p-4 rounded-2xl flex justify-between items-center mb-2">
+                                <span>NPK 15:15:15</span>
+                                <span className="font-bold bg-slate-200 dark:bg-slate-700 px-3 py-1 rounded-lg">450 kg</span>
+                            </div>
+                             <div className="glass p-4 rounded-2xl flex justify-between items-center">
+                                <span>Seeds (Wheat)</span>
+                                <span className="font-bold bg-slate-200 dark:bg-slate-700 px-3 py-1 rounded-lg">1200 kg</span>
+                            </div>
+                        </div>
+                    );
+                    default: return null;
+                }
+            }
+
+            if (selectedTool) {
+                return <div className="p-4 pt-20 pb-28">{renderTool()}</div>;
+            }
+
+            return (
+                <div className="p-4 pt-24 pb-28 animate-slide-up">
+                     <h1 className="text-3xl font-black px-2 mb-8 tracking-tighter uppercase">{t.title}</h1>
+                     <div className="grid grid-cols-3 gap-y-8 gap-x-4">
+                        {tools.map(tool => (
+                            <div key={tool.id} onClick={() => setSelectedTool(tool.id)} className="flex flex-col items-center gap-3 active:scale-90 transition-transform cursor-pointer group">
+                                <div className={`w-20 h-20 ${tool.color} rounded-[28px] flex items-center justify-center text-white text-3xl shadow-lg group-hover:shadow-2xl transition-all`}>
+                                    <i className={`fa-solid ${tool.icon}`}></i>
+                                </div>
+                                <span className="text-[10px] font-black uppercase tracking-widest text-center leading-tight">{tool.label}</span>
+                            </div>
+                        ))}
+                     </div>
+                </div>
+            );
+        };
+
+        // --- DASHBOARD (Refactored to be cleaner) ---
+
+        const Dashboard = ({ lang, setActiveTab, isMobile }) => {
+            const t = TRANSLATIONS[lang];
+            
+            return (
+                <div className={`p-4 ${isMobile ? 'pt-24 pb-28' : 'pt-8'} space-y-6 animate-slide-up`}>
+                    {/* Welcome Banner */}
+                    <div className="bg-brand-lime p-8 rounded-[40px] text-dark-900 shadow-xl relative overflow-hidden group">
+                        <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-white/30 rounded-full blur-3xl"></div>
+                        <h1 className="text-3xl font-black tracking-tight leading-none mb-1 break-words">{t.mobileDash.welcome}</h1>
+                        <p className="font-bold opacity-70 uppercase text-[10px] tracking-widest">{t.mobileDash.status}</p>
+                    </div>
+
+                    {/* Widgets Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="p-5 glass rounded-[30px] flex flex-col justify-between h-32 hover:bg-white/50 transition-colors cursor-default">
+                            <p className="text-[10px] font-black opacity-40 uppercase">{t.common.weather}</p>
+                            <div className="flex items-center gap-2"><i className="fa-solid fa-cloud-sun text-amber-500 text-xl"></i><h3 className="text-3xl font-black">+24°</h3></div>
+                        </div>
+                        <div className="p-5 glass rounded-[30px] flex flex-col justify-between h-32">
+                            <p className="text-[10px] font-black opacity-40 uppercase">{t.common.livestock}</p>
+                            <div className="flex items-center gap-2"><i className="fa-solid fa-cow text-brand-purple text-xl"></i><h3 className="text-3xl font-black">128</h3></div>
+                        </div>
+                        <div className="p-5 glass rounded-[30px] flex flex-col justify-between h-32">
+                            <p className="text-[10px] font-black opacity-40 uppercase">{t.common.soil}</p>
+                            <div className="flex items-center gap-2"><i className="fa-solid fa-droplet text-brand-cyan text-xl"></i><h3 className="text-3xl font-black">42%</h3></div>
+                        </div>
+                        <div onClick={() => setActiveTab('tools')} className="p-5 bg-brand-cyan text-white rounded-[30px] flex flex-col justify-between h-32 active:scale-95 transition-transform cursor-pointer">
+                            <p className="text-[10px] font-black opacity-70 uppercase">{t.common.calc}</p>
+                            <div className="flex items-center gap-2"><i className="fa-solid fa-calculator text-white text-xl"></i><i className="fa-solid fa-arrow-right ml-auto"></i></div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- LAYOUTS ---
+
+        const MobileLayout = ({ lang, setLang, theme, toggleTheme, onLogout }) => {
+            const [activeTab, setActiveTab] = useState('dash');
+            const t = TRANSLATIONS[lang];
+
+            return (
+                <div className="min-h-screen bg-gray-50 dark:bg-dark-900 transition-colors">
+                    {/* Header */}
+                    <header className="fixed top-0 left-0 right-0 z-50 px-4 pt-safe h-20 flex items-center justify-between pointer-events-none">
+                        <div className="w-12 h-12 bg-brand-lime rounded-2xl flex items-center justify-center text-dark-900 shadow-lg pointer-events-auto border-2 border-white/50">
+                            <i className="fa-solid fa-leaf"></i>
+                        </div>
+                        <div className="flex gap-2 pointer-events-auto">
+                            <button onClick={toggleTheme} className="w-12 h-12 glass rounded-2xl flex items-center justify-center shadow-lg active:scale-90 transition-transform">
+                                <i className={`fa-solid ${theme === 'dark' ? 'fa-sun text-yellow-400' : 'fa-moon text-blue-500'}`}></i>
+                            </button>
+                            <button onClick={onLogout} className="w-12 h-12 glass rounded-2xl flex items-center justify-center text-red-500 shadow-lg active:scale-90 transition-transform">
+                                <i className="fa-solid fa-right-from-bracket"></i>
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* Content */}
+                    <main className="h-full">
+                        {activeTab === 'dash' && <Dashboard lang={lang} setActiveTab={setActiveTab} isMobile={true} />}
+                        {activeTab === 'map' && <div className="absolute inset-0 pt-20 pb-20"><FieldMap mapId="map-mobile" /></div>}
+                        {activeTab === 'ai' && <AIChat lang={lang} />}
+                        {activeTab === 'tools' && <ToolsSection lang={lang} />}
+                    </main>
+
+                    {/* Bottom Nav */}
+                    <nav className="fixed bottom-0 left-0 right-0 glass border-t border-gray-200 dark:border-slate-800 z-50 pb-safe rounded-t-[30px] shadow-[0_-5px_20px_rgba(0,0,0,0.1)]">
+                        <div className="flex justify-around items-center h-20">
+                            {[
+                                { id: 'dash', icon: 'fa-house', label: t.tabs.dash },
+                                { id: 'map', icon: 'fa-map-location-dot', label: t.tabs.map },
+                                { id: 'ai', icon: 'fa-brain', label: t.tabs.ai },
+                                { id: 'tools', icon: 'fa-table-cells', label: t.tabs.tools }
+                            ].map(tab => (
+                                <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex flex-col items-center justify-center w-full h-full transition-all ${activeTab === tab.id ? 'text-brand-cyan scale-110' : 'text-slate-400'}`}>
+                                    <i className={`fa-solid ${tab.icon} text-xl mb-1`}></i>
+                                    <span className="text-[9px] font-black uppercase tracking-wider">{tab.label}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </nav>
+                </div>
+            );
+        };
+
+        const DesktopLayout = ({ lang, setLang, theme, toggleTheme, onLogout }) => {
+            const [activeTab, setActiveTab] = useState('dashboard');
+            
+            return (
+                <div className="flex h-screen bg-gray-50 dark:bg-dark-900 transition-colors">
+                    <DesktopSidebar activeTab={activeTab} setActiveTab={setActiveTab} onLogout={onLogout} lang={lang} setLang={setLang} theme={theme} toggleTheme={toggleTheme} />
+                    <main className="flex-1 overflow-hidden relative flex flex-col">
+                        <div className="flex-1 overflow-y-auto">
+                            {activeTab === 'dashboard' && <Dashboard lang={lang} setActiveTab={setActiveTab} isMobile={false} />}
+                            {activeTab === 'map' && <div className="p-4 h-full"><FieldMap mapId="map-desktop" /></div>}
+                            {activeTab === 'ai' && <div className="h-full max-w-2xl mx-auto"><AIChat lang={lang} /></div>}
+                            {activeTab === 'tools' && <div className="h-full max-w-4xl mx-auto relative"><ToolsSection lang={lang} /></div>}
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        // --- SIDEBAR & LANDING (Keep existing) ---
+        const DesktopSidebar = ({ activeTab, setActiveTab, onLogout, lang, theme, toggleTheme, setLang }) => {
+            const menu = [
+                { id: 'dashboard', icon: 'fa-chart-pie', label: TRANSLATIONS[lang].tabs.dash },
+                { id: 'map', icon: 'fa-map-location-dot', label: TRANSLATIONS[lang].common.map },
+                { id: 'ai', icon: 'fa-robot', label: TRANSLATIONS[lang].tabs.ai },
+                { id: 'tools', icon: 'fa-toolbox', label: TRANSLATIONS[lang].tabs.tools },
+            ];
+
+            return (
+                <aside className="w-64 bg-white dark:bg-dark-800 border-r border-slate-200 dark:border-slate-800 flex flex-col h-screen z-20">
+                    <div className="p-6 flex items-center gap-3">
+                        <div className="w-10 h-10 bg-brand-lime rounded-xl flex items-center justify-center text-black font-bold text-xl"><i className="fa-solid fa-leaf"></i></div>
+                        <div className="font-bold text-xl">EkoNova</div>
+                    </div>
+                    <nav className="flex-1 px-4 space-y-2 mt-4">
+                        {menu.map(item => (
+                            <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activeTab === item.id ? 'bg-brand-lime text-black' : 'text-slate-500 hover:bg-gray-100 dark:hover:bg-slate-700 dark:text-slate-400'}`}>
+                                <i className={`fa-solid ${item.icon} w-6`}></i> {item.label}
+                            </button>
+                        ))}
+                    </nav>
+                    <div className="p-4 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                        <div className="flex gap-2 mb-2">
+                            <button onClick={() => setLang('ru')} className={`flex-1 py-1 rounded text-xs font-bold ${lang === 'ru' ? 'bg-slate-200 dark:bg-slate-700' : ''}`}>RU</button>
+                            <button onClick={() => setLang('ky')} className={`flex-1 py-1 rounded text-xs font-bold ${lang === 'ky' ? 'bg-slate-200 dark:bg-slate-700' : ''}`}>KY</button>
+                        </div>
+                        <button onClick={toggleTheme} className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-sm hover:bg-gray-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400">
+                             <i className={`fa-solid ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`}></i> Тема
+                        </button>
+                        <button onClick={onLogout} className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-sm hover:bg-red-50 text-red-500">
+                            <i className="fa-solid fa-right-from-bracket"></i> {TRANSLATIONS[lang].common.logout}
+                        </button>
+                    </div>
+                </aside>
+            );
+        };
+
+        const LandingPage = ({ onLogin, lang, setLang, theme, toggleTheme }) => {
+            const t = TRANSLATIONS[lang];
+            return (
+                <div className={`min-h-screen ${theme === 'light' ? 'bg-white' : 'bg-dark-900'} relative overflow-hidden transition-colors`}>
+                    <div className="absolute inset-0 hero-gradient"></div>
+                    <nav className="relative z-10 max-w-7xl mx-auto px-6 h-24 flex items-center justify-between">
+                        <div className="flex items-center gap-3 text-2xl font-black tracking-tighter">
+                            <i className="fa-solid fa-leaf text-brand-lime"></i> EkoNova
+                        </div>
+                        <div className="hidden md:flex gap-8 font-medium text-sm uppercase tracking-widest text-slate-500 dark:text-slate-400">
+                            <a href="#">{t.nav.solutions}</a>
+                            <a href="#">{t.nav.about}</a>
+                            <a href="#">{t.nav.pricing}</a>
+                        </div>
+                        <div className="flex gap-4">
+                             <button onClick={toggleTheme} className="w-10 h-10 rounded-full border border-slate-200 dark:border-slate-700 flex items-center justify-center"><i className={`fa-solid ${theme==='dark'?'fa-sun':'fa-moon'}`}></i></button>
+                             <button onClick={() => setLang(l => l==='ru'?'ky':'ru')} className="font-bold w-10">{lang.toUpperCase()}</button>
+                             <button onClick={onLogin} className="bg-brand-lime text-black px-6 py-2 rounded-full font-bold hover:scale-105 transition-transform">{t.nav.login}</button>
+                        </div>
+                    </nav>
+                    <div className="relative z-10 max-w-7xl mx-auto px-6 pt-20 text-center">
+                        <h1 className="text-5xl md:text-8xl font-black mb-6 tracking-tighter">
+                            {t.hero.title} <br />
+                            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-lime to-brand-cyan">{t.hero.subtitle}</span>
+                        </h1>
+                        <p className="text-xl md:text-2xl text-slate-500 max-w-2xl mx-auto mb-10">{t.hero.desc}</p>
+                        <div className="flex flex-col md:flex-row justify-center gap-4">
+                            <button onClick={onLogin} className="bg-brand-purple text-white px-10 py-5 rounded-2xl font-bold text-lg shadow-2xl shadow-brand-purple/40 hover:-translate-y-1 transition-transform">{t.hero.start}</button>
+                        </div>
+                        <div className="mt-20 mx-auto max-w-5xl glass rounded-t-[40px] border-b-0 p-4 pb-0 animate-slide-up">
+                            <div className="bg-slate-100 dark:bg-dark-800 rounded-t-[30px] h-64 md:h-96 w-full flex items-center justify-center overflow-hidden relative">
+                                <div className="absolute inset-0 bg-cover bg-center opacity-40" style={{backgroundImage: 'url(https://images.unsplash.com/photo-1625246333195-78d9c38ad449?q=80&w=1000&auto=format&fit=crop)'}}></div>
+                                <div className="relative z-10 glass p-8 rounded-3xl backdrop-blur-xl">
+                                    <i className="fa-solid fa-chart-simple text-6xl text-brand-lime mb-4"></i>
+                                    <div className="text-2xl font-bold">Dashboard Preview</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )
+        };
+
+        const App = () => {
+            const [view, setView] = useState('landing');
+            const [lang, setLang] = useState('ru');
+            const [theme, setTheme] = useState('dark');
+            // Increased breakpoint for mobile view to handle wider phones/tablets better as per user screenshot issue
+            const [isMobile, setIsMobile] = useState(window.innerWidth < 1280);
+
+            useEffect(() => {
+                const handleResize = () => setIsMobile(window.innerWidth < 1280);
+                window.addEventListener('resize', handleResize);
+                document.documentElement.classList.toggle('dark', theme === 'dark');
+                return () => window.removeEventListener('resize', handleResize);
+            }, [theme]);
+
+            const handleLogin = () => setView('app');
+            const handleLogout = () => setView('landing');
+
+            if (view === 'landing') {
+                return <LandingPage onLogin={handleLogin} lang={lang} setLang={setLang} theme={theme} toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />;
+            }
+
+            if (isMobile) {
+                return <MobileLayout onLogout={handleLogout} lang={lang} setLang={setLang} theme={theme} toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />;
+            } else {
+                return <DesktopLayout onLogout={handleLogout} lang={lang} setLang={setLang} theme={theme} toggleTheme={() => setTheme(t => t === 'dark' ? 'light' : 'dark')} />;
+            }
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
